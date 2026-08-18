@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Catalogue Open Data alimenté par un groupe ArcGIS Online">
+  <title>Portail Open Data</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.34/esri/themes/light/main.css">
+  <link rel="stylesheet" href="css/style.css">
+
+  <script type="module"
+          src="https://js.arcgis.com/calcite-components/3.2.1/calcite.esm.js"></script>
+  <script src="https://js.arcgis.com/4.34/"></script>
+</head>
+
+<body>
+  <calcite-shell>
+
+    <calcite-navigation slot="header">
+      <calcite-navigation-logo
+        id="brand"
+        heading="Portail Open Data"
+        description="Catalogue de données publiques">
+      </calcite-navigation-logo>
+
+      <calcite-navigation slot="content-end">
+        <calcite-button id="aboutButton" appearance="transparent" icon-start="information">
+          À propos
+        </calcite-button>
+      </calcite-navigation>
+    </calcite-navigation>
+
+    <main class="page">
+      <section class="hero">
+        <div class="hero-content">
+          <h1>Les données ouvertes du territoire</h1>
+          <p>Explorez, visualisez et réutilisez les données publiées sur ArcGIS Online.</p>
+
+          <calcite-input
+            id="searchInput"
+            type="search"
+            clearable
+            scale="l"
+            placeholder="Rechercher une donnée, un mot-clé, une commune..."
+            icon-start="search">
+          </calcite-input>
+        </div>
+      </section>
+
+      <section class="catalog-layout">
+        <aside class="filters">
+          <calcite-panel heading="Filtrer les données" collapsible>
+            <div class="filter-content">
+              <calcite-label>
+                Thématique
+                <calcite-select id="categoryFilter">
+                  <calcite-option value="">Toutes les thématiques</calcite-option>
+                </calcite-select>
+              </calcite-label>
+
+              <calcite-label>
+                Type
+                <calcite-select id="typeFilter">
+                  <calcite-option value="">Tous les types</calcite-option>
+                </calcite-select>
+              </calcite-label>
+
+              <calcite-label>
+                Producteur
+                <calcite-select id="ownerFilter">
+                  <calcite-option value="">Tous les producteurs</calcite-option>
+                </calcite-select>
+              </calcite-label>
+
+              <calcite-label>
+                Trier par
+                <calcite-select id="sortFilter">
+                  <calcite-option value="modified-desc">Dernières mises à jour</calcite-option>
+                  <calcite-option value="title-asc">Titre A → Z</calcite-option>
+                  <calcite-option value="title-desc">Titre Z → A</calcite-option>
+                  <calcite-option value="created-desc">Plus récents</calcite-option>
+                </calcite-select>
+              </calcite-label>
+
+              <calcite-button id="resetButton" width="full" appearance="outline" icon-start="reset">
+                Réinitialiser
+              </calcite-button>
+            </div>
+          </calcite-panel>
+        </aside>
+
+        <section class="results">
+          <div class="results-header">
+            <div>
+              <h2>Catalogue</h2>
+              <div id="resultCount" class="muted">Chargement…</div>
+            </div>
+
+            <calcite-button id="reloadButton" appearance="transparent" icon-start="refresh">
+              Actualiser
+            </calcite-button>
+          </div>
+
+          <calcite-notice id="errorNotice" kind="danger" closable>
+            <div slot="title">Impossible de charger le catalogue</div>
+            <div slot="message" id="errorMessage"></div>
+          </calcite-notice>
+
+          <calcite-loader id="loader" label="Chargement des données"></calcite-loader>
+
+          <div id="datasetGrid" class="dataset-grid"></div>
+
+          <calcite-pagination
+            id="pagination"
+            class="pagination"
+            page-size="12"
+            start-item="1"
+            total-items="0">
+          </calcite-pagination>
+        </section>
+      </section>
+    </main>
+
+    <calcite-modal id="datasetModal" heading="Jeu de données" width="l">
+      <div id="modalContent"></div>
+      <calcite-button id="closeModalButton" slot="primary" width="full">
+        Fermer
+      </calcite-button>
+    </calcite-modal>
+
+    <calcite-modal id="aboutModal" heading="À propos du portail">
+      <div class="about-content">
+        <p>
+          Ce portail est alimenté automatiquement par un groupe ArcGIS Online.
+          Les informations affichées proviennent des métadonnées des éléments
+          publiés dans ce groupe.
+        </p>
+        <p>
+          Pour modifier le catalogue, ajoutez ou retirez les éléments du groupe
+          configuré dans <code>js/config.js</code>.
+        </p>
+      </div>
+      <calcite-button id="closeAboutButton" slot="primary" width="full">
+        Fermer
+      </calcite-button>
+    </calcite-modal>
+
+  </calcite-shell>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
