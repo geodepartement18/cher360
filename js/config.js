@@ -10,7 +10,7 @@ export const CONFIG = {
 
   // Nombre maximal d'éléments chargés depuis le groupe.
   // Le catalogue utilise ensuite une pagination côté navigateur.
-  maxItems: 1000,
+  maxItems: 10,
 
   // Nombre de jeux de données affichés par page.
   pageSize: 12,
