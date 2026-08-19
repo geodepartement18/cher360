@@ -103,7 +103,7 @@ function getDownloadLinks(item) {
 
 async function loadAllGroupItems() {
   let start = 1;
-  const num = 100;
+  const num = 10;
   const items = [];
 
   while (start !== -1 && items.length < CONFIG.maxItems) {
