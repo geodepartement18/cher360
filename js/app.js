@@ -106,7 +106,7 @@ async function loadAllGroupItems() {
   const num = 10;
   const items = [];
 
-  while (start !== -1 && items.length < CONFIG.maxItems) {
+  while (start !== -1 && items.length < items.length) {
     const result = await state.portal.queryItems({
       query: `group:${CONFIG.groupId}`,
       start,
