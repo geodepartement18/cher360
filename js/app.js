@@ -205,7 +205,7 @@ async function load() {
   $("loader").classList.remove("d-none");
   $("errorNotice").classList.add("d-none");
   try {
-    if(!CONFIG.groupId || CONFIG.groupId==="a249c493cd4d44c39c6565d996cb83d6")
+    if(!CONFIG.groupId || CONFIG.groupId==="ID_GROUPE")
       throw new Error("Renseignez l'ID du groupe dans js/config.js.");
 
     state.portal=new Portal({url:CONFIG.portalUrl});
