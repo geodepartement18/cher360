@@ -9,16 +9,6 @@ export const CONFIG = {
   pageSize: 12,
 
   allowedTypes: [
-    "Feature Service",
-    "Map Service",
-    "CSV",
-    "Shapefile",
-    "GeoJson",
-    "KML",
-    "WFS",
-    "WMS",
-    "Vector Tile Service",
-    "Image Service",
-    "File Geodatabase"
+    "Feature Service"
   ]
 };
