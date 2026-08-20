@@ -5,7 +5,7 @@ export const CONFIG = {
   siteTitle: "Portail Open Data",
   siteDescription: "Catalogue de données publiques",
 
-  maxItems: 10,
+  maxItems: 6,
   pageSize: 12,
 
   allowedTypes: [
