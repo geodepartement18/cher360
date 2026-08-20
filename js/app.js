@@ -169,7 +169,7 @@ async function openDataset(i) {
     <div id="mapMessage" class="text-secondary mt-2"></div>
   `;
 
-  bootstrap.Modal.getOrCreateInstance($("datasetGrid")).show();
+  bootstrap.Modal.getOrCreateInstance($("datasetModal")).show();
   await createMap(i);
 }
 
