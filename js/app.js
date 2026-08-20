@@ -2,535 +2,246 @@ import Portal from "https://js.arcgis.com/4.34/@arcgis/core/portal/Portal.js";
 import FeatureLayer from "https://js.arcgis.com/4.34/@arcgis/core/layers/FeatureLayer.js";
 import Map from "https://js.arcgis.com/4.34/@arcgis/core/Map.js";
 import MapView from "https://js.arcgis.com/4.34/@arcgis/core/views/MapView.js";
-import Layer from "https://js.arcgis.com/4.34/@arcgis/core/layers/Layer.js";
 import { CONFIG } from "./config.js";
 
-const state = {
-  portal: null,
-  allItems: [],
-  filteredItems: [],
-  currentPage: 1
-};
+const $ = id => document.getElementById(id);
+const state = { portal:null, all:[], filtered:[], page:1 };
 
-const $ = (id) => document.getElementById(id);
-
-const loader = $("loader");
-const grid = $("datasetGrid");
-const pagination = $("pagination");
-const errorNotice = $("errorNotice");
-
-function escapeHtml(value = "") {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function esc(v="") {
+  return String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
-
-function formatDate(timestamp) {
-  if (!timestamp) return "Non renseignée";
-  return new Intl.DateTimeFormat("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric"
-  }).format(new Date(timestamp));
+function norm(v="") {
+  return String(v).normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase();
 }
-
-function normalizeText(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase();
+function formatDate(v) {
+  return v ? new Intl.DateTimeFormat("fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date(v)) : "Non renseignée";
 }
-
-function getDescription(item) {
-  return item.description || item.snippet || "Aucune description disponible.";
+function categories(i) {
+  return (i.categories||[]).map(x=>String(x).split("/").filter(Boolean).pop()).filter(Boolean);
 }
+function tags(i) { return Array.isArray(i.tags) ? i.tags : []; }
+function description(i) { return i.description || i.snippet || "Aucune description disponible."; }
 
-function getCategories(item) {
-  // Les catégories peuvent être absentes selon la manière dont le groupe
-  // ou les éléments ont été configurés.
-  const categories = item.categories || [];
-  return categories.map((c) => String(c).split("/").filter(Boolean).pop()).filter(Boolean);
-}
-
-function getTags(item) {
-  return Array.isArray(item.tags) ? item.tags : [];
-}
-
-function getDownloadLinks(item) {
-  const links = [];
-  const url = item.url;
-
-  if (url) {
-    links.push({
-      label: "API / Service REST",
-      href: url,
-      icon: "services"
+async function loadGroupItems() {
+  let start=1, items=[];
+  while(start!==-1 && items.length<CONFIG.maxItems) {
+    const r=await state.portal.queryItems({
+      query:`group:${CONFIG.groupId}`, start, num:100,
+      sortField:"modified", sortOrder:"desc"
     });
-
-    if (item.type === "Feature Service" && /FeatureServer/i.test(url)) {
-      const layerUrl = url.replace(/\/+$/, "") + "/0";
-      const geojson = layerUrl +
-        "/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson";
-
-      links.push({
-        label: "GeoJSON",
-        href: geojson,
-        icon: "download"
-      });
-
-      const csv = layerUrl +
-        "/query?where=1%3D1&outFields=*&returnGeometry=false&f=geojson";
-
-      links.push({
-        label: "Données",
-        href: csv,
-        icon: "table"
-      });
-    }
+    items.push(...r.results.filter(i=>CONFIG.allowedTypes.includes(i.type)));
+    if(r.nextStart===-1 || !r.results.length) break;
+    start=r.nextStart;
   }
-
-  links.push({
-    label: "Fiche ArcGIS Online",
-    href: `${CONFIG.portalUrl.replace(/\/+$/, "")}/home/item.html?id=${item.id}`,
-    icon: "launch"
-  });
-
-  return links;
-}
-
-async function loadAllGroupItems() {
-  let start = 1;
-  const num = 10;
-  const items = [];
-
-  while (start !== -1 && items.length < 4) {
-    const result = await state.portal.queryItems({
-      query: `group:${CONFIG.groupId}`,
-      start,
-      num,
-      sortField: "modified",
-      sortOrder: "desc"
-    });
-
-    for (const item of result.results) {
-      if (CONFIG.allowedTypes.includes(item.type)) {
-        items.push(item);
-      }
-    }
-
-    if (result.nextStart === -1 || !result.results.length) {
-      break;
-    }
-
-    start = result.nextStart;
-  }
-
   return items;
 }
 
-function populateFilters(items) {
-  const categories = new Set();
-  const owners = new Set();
-  const types = new Set();
-
-  items.forEach((item) => {
-    getCategories(item).forEach((c) => categories.add(c));
-    owners.add(item.owner || "Non renseigné");
-    types.add(item.type || "Autre");
+function fillSelect(id, values) {
+  const s=$(id), current=s.value;
+  s.innerHTML='<option value="">'+(id==="categoryFilter"?"Toutes": "Tous")+'</option>';
+  [...new Set(values)].filter(Boolean).sort((a,b)=>a.localeCompare(b,"fr")).forEach(v=>{
+    const o=document.createElement("option"); o.value=v; o.textContent=v; s.appendChild(o);
   });
-
-  fillSelect($("categoryFilter"), [...categories].sort((a, b) => a.localeCompare(b, "fr")));
-  fillSelect($("ownerFilter"), [...owners].sort((a, b) => a.localeCompare(b, "fr")));
-  fillSelect($("typeFilter"), [...types].sort((a, b) => a.localeCompare(b, "fr")));
+  if([...s.options].some(o=>o.value===current)) s.value=current;
 }
 
-function fillSelect(select, values) {
-  const first = select.querySelector("calcite-option");
-  select.innerHTML = "";
-  select.appendChild(first);
-
-  values.forEach((value) => {
-    const option = document.createElement("calcite-option");
-    option.value = value;
-    option.textContent = value;
-    select.appendChild(option);
-  });
+function populateFilters() {
+  fillSelect("categoryFilter",state.all.flatMap(categories));
+  fillSelect("typeFilter",state.all.map(i=>i.type));
+  fillSelect("ownerFilter",state.all.map(i=>i.owner||"Non renseigné"));
 }
 
 function applyFilters() {
-  const search = normalizeText($("searchInput").value);
-  const category = $("categoryFilter").value;
-  const type = $("typeFilter").value;
-  const owner = $("ownerFilter").value;
-  const sort = $("sortFilter").value;
+  const q=norm($("searchInput").value);
+  const cat=$("categoryFilter").value, type=$("typeFilter").value,
+        owner=$("ownerFilter").value, sort=$("sortFilter").value;
 
-  let result = state.allItems.filter((item) => {
-    const searchable = normalizeText([
-      item.title,
-      getDescription(item),
-      item.owner,
-      item.type,
-      ...getTags(item),
-      ...getCategories(item)
-    ].join(" "));
-
-    const matchSearch = !search || searchable.includes(search);
-    const matchCategory = !category || getCategories(item).includes(category);
-    const matchType = !type || item.type === type;
-    const matchOwner = !owner || (item.owner || "Non renseigné") === owner;
-
-    return matchSearch && matchCategory && matchType && matchOwner;
+  let r=state.all.filter(i=>{
+    const hay=norm([i.title,description(i),i.owner,i.type,...tags(i),...categories(i)].join(" "));
+    return (!q||hay.includes(q)) &&
+           (!cat||categories(i).includes(cat)) &&
+           (!type||i.type===type) &&
+           (!owner||(i.owner||"Non renseigné")===owner);
   });
 
-  result = [...result].sort((a, b) => {
-    if (sort === "title-asc") {
-      return (a.title || "").localeCompare(b.title || "", "fr");
-    }
-    if (sort === "title-desc") {
-      return (b.title || "").localeCompare(a.title || "", "fr");
-    }
-    if (sort === "created-desc") {
-      return (b.created || 0) - (a.created || 0);
-    }
-    return (b.modified || 0) - (a.modified || 0);
+  r.sort((a,b)=>{
+    if(sort==="title-asc") return (a.title||"").localeCompare(b.title||"","fr");
+    if(sort==="title-desc") return (b.title||"").localeCompare(a.title||"","fr");
+    if(sort==="created-desc") return (b.created||0)-(a.created||0);
+    return (b.modified||0)-(a.modified||0);
   });
 
-  state.filteredItems = result;
-  state.currentPage = 1;
-  render();
+  state.filtered=r; state.page=1; render();
+}
+
+function card(i) {
+  const thumb=i.thumbnailUrl||`${CONFIG.portalUrl.replace(/\/+$/,"")}/home/images/noThumbnail.png`;
+  const cat=categories(i)[0]||"Donnée";
+  return `<div class="col">
+    <div class="card h-100 shadow-sm dataset-card">
+      <img src="${esc(thumb)}" class="card-img-top dataset-thumbnail" alt="${esc(i.title||"Donnée")}" loading="lazy">
+      <div class="card-body d-flex flex-column">
+        <div class="mb-2">
+          <span class="badge text-bg-primary">${esc(cat)}</span>
+          <span class="badge text-bg-secondary">${esc(i.type||"Autre")}</span>
+        </div>
+        <h5 class="card-title">${esc(i.title||"Sans titre")}</h5>
+        <p class="small text-secondary mb-2">${esc(i.owner||"Producteur non renseigné")}</p>
+        <p class="card-text description flex-grow-1">${esc(description(i))}</p>
+        <small class="text-secondary">Mis à jour le ${esc(formatDate(i.modified))}</small>
+      </div>
+      <div class="card-footer bg-white border-0">
+        <button class="btn btn-primary w-100" data-open="${esc(i.id)}">Consulter</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 function render() {
-  const total = state.filteredItems.length;
-  const pageSize = CONFIG.pageSize;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const total=state.filtered.length, size=CONFIG.pageSize, pages=Math.max(1,Math.ceil(total/size));
+  state.page=Math.min(state.page,pages);
+  const start=(state.page-1)*size;
+  $("resultCount").textContent=`${total} jeu${total>1?"x":""} de données`;
+  $("datasetGrid").innerHTML=state.filtered.slice(start,start+size).map(card).join("");
 
-  if (state.currentPage > totalPages) {
-    state.currentPage = totalPages;
-  }
+  if(!total) $("datasetGrid").innerHTML=`<div class="col-12"><div class="alert alert-warning">Aucune donnée ne correspond aux critères.</div></div>`;
 
-  const start = (state.currentPage - 1) * pageSize;
-  const pageItems = state.filteredItems.slice(start, start + pageSize);
+  const p=$("pagination"); p.innerHTML="";
+  if(pages<=1) return;
 
-  $("resultCount").textContent =
-    `${total} jeu${total > 1 ? "x" : ""} de données`;
-
-  grid.innerHTML = pageItems.map(createCardHtml).join("");
-
-  pagination.totalItems = total;
-  pagination.pageSize = pageSize;
-  pagination.startItem = start + 1;
-
-  if (total === 0) {
-    grid.innerHTML = `
-      <calcite-notice open kind="warning">
-        <div slot="title">Aucun résultat</div>
-        <div slot="message">
-          Modifiez vos critères de recherche ou réinitialisez les filtres.
-        </div>
-      </calcite-notice>
-    `;
+  for(let n=1;n<=pages;n++) {
+    const li=document.createElement("li");
+    li.className=`page-item ${n===state.page?"active":""}`;
+    li.innerHTML=`<button class="page-link">${n}</button>`;
+    li.querySelector("button").addEventListener("click",()=>{state.page=n;render();window.scrollTo({top:$("catalogue").offsetTop-20,behavior:"smooth"});});
+    p.appendChild(li);
   }
 }
 
-function createCardHtml(item) {
-  const thumbnail = item.thumbnailUrl ||
-    `${CONFIG.portalUrl.replace(/\/+$/, "")}/home/images/noThumbnail.png`;
-
-  const categories = getCategories(item);
-  const category = categories[0] || "Donnée";
-
-  return `
-    <calcite-card class="dataset-card">
-      <img
-        slot="thumbnail"
-        class="dataset-thumbnail"
-        src="${escapeHtml(thumbnail)}"
-        alt="${escapeHtml(item.title || "Donnée")}"
-        loading="lazy">
-
-      <span slot="heading">${escapeHtml(item.title || "Sans titre")}</span>
-      <span slot="subheading">
-        ${escapeHtml(item.owner || "Producteur non renseigné")}
-      </span>
-
-      <div class="card-body">
-        <calcite-chip scale="s">${escapeHtml(category)}</calcite-chip>
-        <calcite-chip scale="s">${escapeHtml(item.type || "Autre")}</calcite-chip>
-
-        <p class="description">
-          ${escapeHtml(getDescription(item))}
-        </p>
-
-        <div class="metadata">
-          <span>Mis à jour le ${escapeHtml(formatDate(item.modified))}</span>
-        </div>
-      </div>
-
-      <calcite-button
-        slot="footer-end"
-        appearance="solid"
-        icon-start="launch"
-        data-action="open"
-        data-id="${escapeHtml(item.id)}">
-        Consulter
-      </calcite-button>
-    </calcite-card>
-  `;
+function serviceLinks(i) {
+  const base=CONFIG.portalUrl.replace(/\/+$/,""), links=[];
+  if(i.url) {
+    links.push({label:"Service REST",url:i.url});
+    if(i.type==="Feature Service" && /FeatureServer/i.test(i.url)) {
+      const layer=i.url.replace(/\/+$/,"")+"/0";
+      links.push({label:"GeoJSON",url:`${layer}/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson`});
+      links.push({label:"CSV",url:`${layer}/query?where=1%3D1&outFields=*&returnGeometry=false&f=csv`});
+    }
+  }
+  links.push({label:"Fiche ArcGIS Online",url:`${base}/home/item.html?id=${i.id}`});
+  return links;
 }
 
-function openDataset(item) {
-  const modal = $("datasetModal");
-  const modalContent = $("modalContent");
+async function openDataset(i) {
+  const thumb=i.thumbnailUrl||`${CONFIG.portalUrl.replace(/\/+$/,"")}/home/images/noThumbnail.png`;
+  $("modalTitle").textContent=i.title||"Jeu de données";
 
-  const thumbnail = item.thumbnailUrl ||
-    `${CONFIG.portalUrl.replace(/\/+$/, "")}/home/images/noThumbnail.png`;
-
-  const tags = getTags(item);
-  const categories = getCategories(item);
-  const links = getDownloadLinks(item);
-
-  modal.heading = item.title || "Jeu de données";
-
-  modalContent.innerHTML = `
-    <div class="detail-grid">
-      <div>
-        <img class="detail-thumbnail"
-             src="${escapeHtml(thumbnail)}"
-             alt="${escapeHtml(item.title || "Donnée")}">
+  $("modalContent").innerHTML=`
+    <div class="row g-4">
+      <div class="col-lg-4">
+        <img src="${esc(thumb)}" class="img-fluid rounded detail-thumbnail" alt="${esc(i.title||"Donnée")}">
       </div>
-
-      <div>
-        <h2>${escapeHtml(item.title || "Sans titre")}</h2>
-
-        <p class="lead">
-          ${escapeHtml(getDescription(item))}
-        </p>
-
-        <dl class="metadata-list">
-          <dt>Producteur</dt>
-          <dd>${escapeHtml(item.owner || "Non renseigné")}</dd>
-
-          <dt>Type</dt>
-          <dd>${escapeHtml(item.type || "Non renseigné")}</dd>
-
-          <dt>Création</dt>
-          <dd>${escapeHtml(formatDate(item.created))}</dd>
-
-          <dt>Dernière mise à jour</dt>
-          <dd>${escapeHtml(formatDate(item.modified))}</dd>
-
-          <dt>Accès</dt>
-          <dd>${escapeHtml(item.access || "Non renseigné")}</dd>
-
-          <dt>Licence</dt>
-          <dd>${escapeHtml(item.licenseInfo || "Non renseignée")}</dd>
-
-          <dt>Source / crédit</dt>
-          <dd>${escapeHtml(item.accessInformation || "Non renseigné")}</dd>
+      <div class="col-lg-8">
+        <h2>${esc(i.title||"Sans titre")}</h2>
+        <p class="lead">${esc(description(i))}</p>
+        <dl class="row">
+          <dt class="col-sm-4">Producteur</dt><dd class="col-sm-8">${esc(i.owner||"Non renseigné")}</dd>
+          <dt class="col-sm-4">Type</dt><dd class="col-sm-8">${esc(i.type||"Non renseigné")}</dd>
+          <dt class="col-sm-4">Création</dt><dd class="col-sm-8">${esc(formatDate(i.created))}</dd>
+          <dt class="col-sm-4">Mise à jour</dt><dd class="col-sm-8">${esc(formatDate(i.modified))}</dd>
+          <dt class="col-sm-4">Licence</dt><dd class="col-sm-8">${esc(i.licenseInfo||"Non renseignée")}</dd>
+          <dt class="col-sm-4">Source / crédit</dt><dd class="col-sm-8">${esc(i.accessInformation||"Non renseigné")}</dd>
         </dl>
-
-        <h3>Thématiques</h3>
-        <div class="chips">
-          ${categories.length
-            ? categories.map((c) => `<calcite-chip>${escapeHtml(c)}</calcite-chip>`).join("")
-            : "<span>Non renseignées</span>"}
-        </div>
-
-        <h3>Mots-clés</h3>
-        <div class="chips">
-          ${tags.length
-            ? tags.map((t) => `<calcite-chip scale="s">${escapeHtml(t)}</calcite-chip>`).join("")
-            : "<span>Non renseignés</span>"}
-        </div>
-
-        <h3>Accès aux données</h3>
-        <div class="actions">
-          ${links.map((link) => `
-            <calcite-button
-              appearance="outline"
-              icon-start="${escapeHtml(link.icon)}"
-              data-link="${escapeHtml(link.href)}">
-              ${escapeHtml(link.label)}
-            </calcite-button>
-          `).join("")}
+        <h5>Thématiques</h5>
+        <div class="mb-3">${categories(i).map(x=>`<span class="badge text-bg-light border me-1">${esc(x)}</span>`).join("")||"Non renseignées"}</div>
+        <h5>Mots-clés</h5>
+        <div class="mb-3">${tags(i).map(x=>`<span class="badge text-bg-light border me-1">${esc(x)}</span>`).join("")||"Non renseignés"}</div>
+        <h5>Accès aux données</h5>
+        <div class="d-flex flex-wrap gap-2">
+          ${serviceLinks(i).map(x=>`<a class="btn btn-outline-primary" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.label)}</a>`).join("")}
         </div>
       </div>
     </div>
-
-    <div id="mapPreviewContainer" class="map-preview-container">
-      <h3>Aperçu cartographique</h3>
-      <div id="mapPreview" class="map-preview"></div>
-      <div id="mapMessage" class="muted"></div>
-    </div>
+    <hr class="my-4">
+    <h4>Aperçu cartographique</h4>
+    <div id="mapPreview" class="map-preview"></div>
+    <div id="mapMessage" class="text-secondary mt-2"></div>
   `;
 
-  modal.open = true;
-
-  modalContent.querySelectorAll("[data-link]").forEach((button) => {
-    button.addEventListener("click", () => {
-      window.open(button.dataset.link, "_blank", "noopener,noreferrer");
-    });
-  });
-
-  createMapPreview(item);
+  bootstrap.Modal.getOrCreateInstance($("datasetModal")).show();
+  await createMap(i);
 }
 
-async function createMapPreview(item) {
-  const mapNode = $("mapPreview");
-  const message = $("mapMessage");
-
-  if (!mapNode) return;
-
-  if (item.type !== "Feature Service") {
-    mapNode.style.display = "none";
-    message.textContent =
-      "Aperçu cartographique disponible uniquement pour les Feature Services dans cette version.";
-    return;
-  }
-
-  if (!item.url) {
-    mapNode.style.display = "none";
-    message.textContent = "Aucune URL de service disponible.";
+async function createMap(i) {
+  const node=$("mapPreview"), msg=$("mapMessage");
+  if(i.type!=="Feature Service" || !i.url) {
+    node.style.display="none";
+    msg.textContent="L'aperçu cartographique est disponible pour les Feature Services.";
     return;
   }
 
   try {
-    const layer = new FeatureLayer({
-      portalItem: {
-        id: item.id,
-        portal: state.portal
-      },
-      outFields: ["*"]
-    });
-
+    const layer=new FeatureLayer({portalItem:{id:i.id,portal:state.portal}});
     await layer.load();
 
-    const map = new Map({
-      basemap: "topo-vector",
-      layers: [layer]
-    });
-
-    const view = new MapView({
-      container: mapNode,
-      map,
-      center: [2.4, 46.6],
-      zoom: 5,
-      ui: {
-        components: ["zoom", "attribution"]
-      }
+    const map=new Map({basemap:"topo-vector",layers:[layer]});
+    const view=new MapView({
+      container:node,map,
+      center:[2.4,46.6],zoom:5,
+      ui:{components:["zoom","attribution"]}
     });
 
     await view.when();
-
-    if (layer.fullExtent) {
-      await view.goTo(layer.fullExtent.expand(1.2), {
-        animate: false
-      });
-    }
-  } catch (error) {
-    console.warn("Aperçu cartographique indisponible :", error);
-    mapNode.style.display = "none";
-    message.textContent =
-      "La carte n'a pas pu être affichée pour cette donnée.";
+    if(layer.fullExtent) await view.goTo(layer.fullExtent.expand(1.2),{animate:false});
+  } catch(e) {
+    console.warn(e);
+    node.style.display="none";
+    msg.textContent="Impossible d'afficher la carte pour cette donnée.";
   }
 }
 
-async function initialize() {
+async function load() {
+  $("loader").classList.remove("d-none");
+  $("errorNotice").classList.add("d-none");
   try {
-    if (!CONFIG.groupId || CONFIG.groupId === "REMPLACEZ_PAR_ID_DU_GROUPE") {
-      throw new Error(
-        "Configurez l'ID du groupe ArcGIS Online dans js/config.js."
-      );
-    }
+    if(!CONFIG.groupId || CONFIG.groupId==="REMPLACEZ_PAR_ID_DU_GROUPE")
+      throw new Error("Renseignez l'ID du groupe dans js/config.js.");
 
-    $("brand").heading = CONFIG.siteTitle;
-    $("brand").description = CONFIG.siteDescription;
-
-    state.portal = new Portal({
-      url: CONFIG.portalUrl
-    });
-
-    state.portal.authMode = "anonymous";
-
+    state.portal=new Portal({url:CONFIG.portalUrl});
+    state.portal.authMode="anonymous";
     await state.portal.load();
 
-    state.allItems = await loadAllGroupItems();
-
-    populateFilters(state.allItems);
+    state.all=await loadGroupItems();
+    populateFilters();
     applyFilters();
-
-    loader.hidden = true;
-  } catch (error) {
-    console.error(error);
-    loader.hidden = true;
-    errorNotice.open = true;
-    $("errorMessage").textContent = error.message;
+  } catch(e) {
+    console.error(e);
+    $("errorNotice").classList.remove("d-none");
+    $("errorMessage").textContent=e.message;
+  } finally {
+    $("loader").classList.add("d-none");
   }
 }
 
-// Recherche / filtres
-$("searchInput").addEventListener("calciteInputInput", applyFilters);
-$("categoryFilter").addEventListener("calciteSelectChange", applyFilters);
-$("typeFilter").addEventListener("calciteSelectChange", applyFilters);
-$("ownerFilter").addEventListener("calciteSelectChange", applyFilters);
-$("sortFilter").addEventListener("calciteSelectChange", applyFilters);
+["categoryFilter","typeFilter","ownerFilter","sortFilter"].forEach(id=>$(id).addEventListener("change",applyFilters));
+$("searchInput").addEventListener("input",applyFilters);
 
-$("resetButton").addEventListener("click", () => {
-  $("searchInput").value = "";
-  $("categoryFilter").value = "";
-  $("typeFilter").value = "";
-  $("ownerFilter").value = "";
-  $("sortFilter").value = "modified-desc";
+$("resetButton").addEventListener("click",()=>{
+  $("searchInput").value="";
+  $("categoryFilter").value="";
+  $("typeFilter").value="";
+  $("ownerFilter").value="";
+  $("sortFilter").value="modified-desc";
   applyFilters();
 });
-
-$("reloadButton").addEventListener("click", async () => {
-  loader.hidden = false;
-  errorNotice.open = false;
-
-  try {
-    state.allItems = await loadAllGroupItems();
-    populateFilters(state.allItems);
-    applyFilters();
-  } catch (error) {
-    errorNotice.open = true;
-    $("errorMessage").textContent = error.message;
-  } finally {
-    loader.hidden = true;
+$("reloadButton").addEventListener("click",load);
+$("datasetGrid").addEventListener("click",e=>{
+  const b=e.target.closest("[data-open]");
+  if(b) {
+    const i=state.all.find(x=>x.id===b.dataset.open);
+    if(i) openDataset(i);
   }
 });
 
-// Pagination Calcite
-pagination.addEventListener("calcitePaginationChange", (event) => {
-  state.currentPage = event.target.startItem
-    ? Math.ceil(event.target.startItem / CONFIG.pageSize)
-    : 1;
-  render();
-});
-
-// Ouverture des fiches
-grid.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-action='open']");
-  if (!button) return;
-
-  const item = state.allItems.find((i) => i.id === button.dataset.id);
-  if (item) openDataset(item);
-});
-
-$("closeModalButton").addEventListener("click", () => {
-  $("datasetModal").open = false;
-});
-
-$("aboutButton").addEventListener("click", () => {
-  $("aboutModal").open = true;
-});
-
-$("closeAboutButton").addEventListener("click", () => {
-  $("aboutModal").open = false;
-});
-
-initialize();
+load();
