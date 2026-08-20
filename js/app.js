@@ -27,7 +27,7 @@ async function loadGroupItems() {
   let start=1, items=[];
   while(start!==-1 && items.length<CONFIG.maxItems) {
     const r=await state.portal.queryItems({
-      query:`group:${CONFIG.groupId}`, start, num:100,
+      query:`group:${CONFIG.groupId}`, num:20,
       sortField:"modified", sortOrder:"desc"
     });
     items.push(...r.results.filter(i=>CONFIG.allowedTypes.includes(i.type)));
